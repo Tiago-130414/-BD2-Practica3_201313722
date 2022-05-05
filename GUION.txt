@@ -1,0 +1,117 @@
+GUION
+
+Una replicación de base de datos es una técnica mediante la cual copiamos de forma exacta en otra ubicación una instancia de la base de datos. 
+Se utiliza en entornos distribuidos de Sistemas de Gestión de Bases de Datos donde una sola base de datos tiene que ser utilizada 
+y actualizada en varios lugares de forma simultánea.
+
+Existen 4 tecnicas de replicacion que provee SQL Server las cuales son:
+
+➔ Transactional replication
+   primero se envía una copia completa de la base de datos y luego se van enviando de forma periódica (o a veces continua) las actualizaciones de los datos que cambian. 
+   Se utiliza cuando necesitas que todos los nodos con todas las instancias de la base de datos tengan los mismos datos a los pocos segundos de realizarse un cambio.
+
+   La replicación transaccional generalmente se usa en entornos de servidor a servidor y es adecuada en cada uno de los siguientes casos:
+        * Desea que los cambios incrementales se propaguen a los suscriptores a medida que ocurren.
+        * La aplicación requiere una latencia baja entre el momento en que se realizan los cambios en el Publicador y los cambios llegan al Suscriptor.
+        * El publicador tiene un volumen muy alto de actividad de inserción, actualización y eliminación.
+        * El publicador o el suscriptor es una base de datos que no es de SQL Server, como Oracle.
+   
+➔ Snapshot replication
+   O Replicion instantanea los datos de un servidor son simplemente copiados a otro servidor o a otra base de datos dentro del mismo servidor. 
+   Al copiarse todo no necesitas un control de cambios. Se suele utilizar cuando los datos cambian con muy poca frecuencia.
+
+   El uso de la replicación de instantáneas por sí solo es más apropiado cuando se cumple uno o más de los siguientes:
+        * Los datos cambian con poca frecuencia.
+        * Es aceptable tener copias de datos que están desactualizados con respecto al Editor por un período de tiempo.
+        * Replicar pequeños volúmenes de datos.
+        * Se produce un gran volumen de cambios en un corto período de tiempo.
+
+➔ Peer-to-peer
+   La replicación de punto a punto proporciona una solución de alta disponibilidad y escalabilidad horizontal mediante el mantenimiento de copias de datos en varias 
+   instancias de servidor, también conocidas como nodos . Construida sobre la base de la replicación transaccional, la replicación punto a punto propaga cambios 
+   transaccionales consistentes casi en tiempo real. Esto permite que las aplicaciones que requieren una escalabilidad horizontal de las operaciones 
+   de lectura distribuyan las lecturas de los clientes en varios nodos. 
+
+➔ Merge replication
+
+   es un método para copiar y distribuir datos y objetos de base de datos de una base de datos de SQL Server a otra, 
+   seguido de la sincronización de las bases de datos para mantener la coherencia.
+   La replicación de mezcla se usa normalmente en entornos de servidor a cliente. 
+   La replicación de mezcla es adecuada en cualquiera de las siguientes situaciones:
+        * Múltiples suscriptores pueden actualizar los mismos datos en varios momentos y propagar esos cambios al publicador y a otros suscriptores.
+        * Los suscriptores necesitan recibir datos, realizar cambios sin conexión y luego sincronizar los cambios con el publicador y otros suscriptores.
+        * Cada Suscriptor requiere una partición diferente de datos.
+        * Pueden ocurrir conflictos y, cuando lo hacen, necesita la capacidad de detectarlos y resolverlos. 
+
+
+###### CONFIGURACION DE REPLICACION ######
+
+1.- Crear los contenedores
+    
+   docker run -h publisher --name publisher -e 'ACCEPT_EULA=Y' -e 'SA_PASSWORD=Santi130414' -p 1451:1433 -d mcr.microsoft.com/mssql/server:2019-CU15-ubuntu-20.04
+   docker run -h subscriber1 --name subscriber1 -e 'ACCEPT_EULA=Y' -e 'SA_PASSWORD=Santi130414' -p 1452:1433 -d mcr.microsoft.com/mssql/server:2019-CU15-ubuntu-20.04
+   docker run -h subscriber2 --name subscriber2 -e 'ACCEPT_EULA=Y' -e 'SA_PASSWORD=Santi130414' -p 1453:1433 -d mcr.microsoft.com/mssql/server:2019-CU15-ubuntu-20.04
+   docker run -h distributor --name distributor -e 'ACCEPT_EULA=Y' -e 'SA_PASSWORD=Santi130414' -p 1454:1433 -d mcr.microsoft.com/mssql/server:2019-CU15-ubuntu-20.04
+
+2.- Conectarse a los contenedores desde SQL Management
+
+    192.168.50.119,1451
+    Santi130414
+
+3.- Activar los agentes
+
+    docker exec -it -u 0 distributor /opt/mssql/bin/mssql-conf set sqlagent.enabled true
+    docker exec -it -u 0 publisher  /opt/mssql/bin/mssql-conf set sqlagent.enabled true 
+    docker exec -it -u 0 subscriber1  /opt/mssql/bin/mssql-conf set sqlagent.enabled true 
+    docker exec -it -u 0 subscriber2  /opt/mssql/bin/mssql-conf set sqlagent.enabled true 
+
+
+4.- Validar que los agentes esten activos
+
+    Actualizando en cada conexion para poder verlos
+
+4.- Crear la red de contenedores
+
+    docker network create REPLICATION
+    docker network connect REPLICATION publisher
+    docker network connect REPLICATION distributor
+    docker network connect REPLICATION subscriber1
+    docker network connect REPLICATION subscriber2
+
+5.- Mostrar que si estan en la misma network los docker
+
+    docker network ls //mostrar que si esta la red
+    docker network inspect REPLICATION //mostrar los contenedores en esa red
+
+6.- Configurar el distribuidor
+
+    *llamar el procedimiento almacenado para decir que es un distribuidor
+    
+    *crear definicion de la base de datos
+    
+    *crear carpeta en contenedor de distribuidor
+        docker exec -it distributor /bin/bash
+        cd var/opt/mssql 
+        mkdir ReplData
+
+    *llamar el procedimiento almacenado para Conectarse publisher al distribuidor
+
+###### VALIDACION DE REPLICACION ######
+
+/*
+    PUBLISHER
+*/
+USE [Northwind];
+Insert Into Region Values (5,'Prueba');
+select * from Region;
+
+Insert Into Territories Values ('99999','Prueba',5)
+select * from Territories;
+
+/*
+    subscriber1 Y subscriber2
+*/
+
+USE [Northwind];
+select * from Region
+select * from Territories
